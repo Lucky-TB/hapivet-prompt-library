@@ -1,0 +1,44 @@
+models:
+  openai:
+    gpt-4:
+      cost_per_1k_tokens: 0.03
+      max_tokens: 8192
+      capabilities: ["text-generation", "reasoning", "coding"]
+    gpt-3.5-turbo:
+      cost_per_1k_tokens: 0.002
+      max_tokens: 4096
+      capabilities: ["text-generation", "reasoning"]
+  
+  anthropic:
+    claude-3:
+      cost_per_1k_tokens: 0.015
+      max_tokens: 200000
+      capabilities: ["text-generation", "reasoning", "coding"]
+  
+  google:
+    gemini-pro:
+      cost_per_1k_tokens: 0.0
+      max_tokens: 30000
+      capabilities: ["text-generation", "reasoning", "coding"]
+  
+  deepseek:
+    deepseek-chat:
+      cost_per_1k_tokens: 0.0014
+      max_tokens: 32768
+      capabilities: ["text-generation", "reasoning", "coding"]
+    deepseek-coder:
+      cost_per_1k_tokens: 0.0014
+      max_tokens: 32768
+      capabilities: ["coding", "code-generation", "debugging"]
+
+monitoring:
+  spike_threshold: 1000  # tokens per hour
+  fraud_threshold: 10000  # tokens per hour
+  alert_cooldown: 3600  # seconds
+
+cost_optimization:
+  free_tier_limits:
+    gemini: 15000000  # tokens per month
+    openai: 5000000   # tokens per month
+    anthropic: 10000000  # tokens per month
+    deepseek: 1000000  # tokens per month 

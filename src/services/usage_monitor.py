@@ -19,11 +19,27 @@ class UsageMonitor(LoggerMixin):
         self.fraud_threshold = self.monitoring_config.get('fraud_threshold', 10000)
         self.alert_cooldown = self.monitoring_config.get('alert_cooldown', 3600)
     
-    def record_usage(self, usage: TokenUsage) -> None:
+    def record_usage(self, response, user_id: str = None) -> None:
         """Record token usage for monitoring"""
         try:
+            # Handle both TokenUsage and PromptResponse objects
+            if hasattr(response, 'user_id'):
+                # It's a TokenUsage object
+                usage = response
+                user_id = usage.user_id
+                model_id = usage.model_id
+                tokens_used = usage.tokens_used
+                cost = usage.cost
+            else:
+                # It's a PromptResponse object, need user_id parameter
+                if not user_id:
+                    raise ValueError("user_id is required when passing PromptResponse")
+                model_id = response.model_used
+                tokens_used = response.tokens_used
+                cost = response.cost
+            
             # Store in Redis for fast access
-            key = f"usage:{usage.user_id}:{usage.model_id}:{datetime.utcnow().strftime('%Y-%m-%d:%H')}"
+            key = f"usage:{user_id}:{model_id}:{datetime.utcnow().strftime('%Y-%m-%d:%H')}"
             current_usage = self.redis_client.get(key)
             
             if current_usage:
@@ -31,28 +47,28 @@ class UsageMonitor(LoggerMixin):
             else:
                 current_usage = 0
             
-            new_usage = current_usage + usage.tokens_used
+            new_usage = current_usage + tokens_used
             self.redis_client.setex(key, 3600, new_usage)  # Expire in 1 hour
             
             # Store in database
             with db_manager.get_session() as session:
                 from src.utils.database import Request
                 db_request = Request(
-                    user_id=int(usage.user_id),
-                    model_used=usage.model_id,
+                    user_id=int(user_id),
+                    model_used=model_id,
                     prompt="",  # We don't store the actual prompt for privacy
                     response="",
-                    tokens_used=usage.tokens_used,
-                    cost=usage.cost
+                    tokens_used=tokens_used,
+                    cost=cost
                 )
                 session.add(db_request)
                 session.commit()
             
             # Check for anomalies
-            self._check_for_anomalies(usage.user_id, usage.model_id, new_usage)
+            self._check_for_anomalies(user_id, model_id, new_usage)
             
         except Exception as e:
-            self.log_error(e, {"user_id": usage.user_id, "model_id": usage.model_id})
+            self.log_error(e, {"user_id": user_id, "model_id": model_id if 'model_id' in locals() else 'unknown'})
     
     def _check_for_anomalies(self, user_id: str, model_id: str, current_usage: int) -> None:
         """Check for usage anomalies and generate alerts"""

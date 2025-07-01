@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from src.api.routes import router
 from src.utils.logger import setup_logging, get_logger
 from src.utils.database import db_manager
@@ -84,8 +84,15 @@ async def root():
         "message": "Welcome to Hapivet Prompt Library",
         "version": "1.0.0",
         "docs": "/docs",
+        "examples": "/examples",
         "health": "/api/v1/health"
     }
+
+
+@app.get("/examples", response_class=HTMLResponse)
+async def examples_page():
+    """Interactive examples page"""
+    return FileResponse("static/examples.html")
 
 
 if __name__ == "__main__":

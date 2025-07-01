@@ -29,7 +29,7 @@ class DeepSeekModel(BaseAIModel):
             
             # Prepare request payload
             payload = {
-                "model": self.model_id,
+                "model": self.name,  # Use the actual model name, not the full ID
                 "messages": messages,
                 "max_tokens": request.max_tokens or self.max_tokens,
                 "temperature": 0.7

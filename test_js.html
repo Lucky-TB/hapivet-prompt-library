@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JavaScript Test</title>
+</head>
+<body>
+    <h1>JavaScript Test</h1>
+    <button onclick="testFunction()">Test Button</button>
+    <div id="result"></div>
+
+    <script>
+        function testFunction() {
+            document.getElementById('result').innerHTML = 'JavaScript is working!';
+        }
+        
+        // Test the loadExample function
+        const examples = {
+            summarize: {
+                prompt: "Test prompt",
+                model: "auto"
+            }
+        };
+        
+        function loadExample(type) {
+            const example = examples[type];
+            if (example) {
+                document.getElementById('result').innerHTML = 'loadExample function works! Type: ' + type;
+            }
+        }
+        
+        // Expose to window
+        window.loadExample = loadExample;
+        window.testFunction = testFunction;
+        
+        console.log('Script loaded, loadExample function:', typeof loadExample);
+    </script>
+</body>
+</html> 

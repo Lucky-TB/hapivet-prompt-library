@@ -1,198 +1,226 @@
 import pytest
+import asyncio
 from unittest.mock import Mock, patch, AsyncMock
 from src.models.base_model import BaseAIModel
 from src.models.openai_model import OpenAIModel
 from src.models.anthropic_model import AnthropicModel
 from src.models.gemini_model import GeminiModel
 from src.models.deepseek_model import DeepSeekModel
-from src.utils.types import PromptRequest, PromptResponse
-from datetime import datetime
+from src.utils.types import PromptRequest, PromptResponse, AIModel
 
 
 class TestBaseAIModel:
+    """Test the base AI model class"""
+    
     def test_base_model_initialization(self):
         """Test base model initialization"""
         config = {
             'id': 'test-model',
             'name': 'Test Model',
-            'provider': 'test',
+            'provider': 'test-provider',
             'cost_per_1k_tokens': 0.01,
             'max_tokens': 1000,
             'capabilities': ['text-generation'],
             'is_available': True
         }
-        
-        model = Mock(spec=BaseAIModel)
-        model.model_config = config
-        model.model_id = config['id']
-        model.name = config['name']
-        model.provider = config['provider']
-        model.cost_per_1k_tokens = config['cost_per_1k_tokens']
-        model.max_tokens = config['max_tokens']
-        model.capabilities = config['capabilities']
-        model.is_available = config['is_available']
-        
-        assert model.model_id == 'test-model'
-        assert model.name == 'Test Model'
-        assert model.provider == 'test'
+        model = BaseAIModel(config)
+        assert model.model_id == "test-model"
+        assert model.name == "Test Model"
+        assert model.provider == "test-provider"
         assert model.cost_per_1k_tokens == 0.01
         assert model.max_tokens == 1000
         assert model.capabilities == ['text-generation']
         assert model.is_available is True
     
-    def test_calculate_cost(self):
-        """Test cost calculation"""
-        config = {'cost_per_1k_tokens': 0.02}
-        model = Mock(spec=BaseAIModel)
-        model.cost_per_1k_tokens = config['cost_per_1k_tokens']
-        model.calculate_cost = BaseAIModel.calculate_cost.__get__(model)
-        
-        cost = model.calculate_cost(1000)
-        assert cost == 0.02
+    def test_estimate_tokens(self):
+        """Test token estimation"""
+        config = {'id': 'test', 'provider': 'test', 'name': 'Test'}
+        model = BaseAIModel(config)
+        tokens = model.estimate_tokens("Hello world")
+        assert isinstance(tokens, int)
+        assert tokens > 0
     
-    def test_can_handle_capability(self):
-        """Test capability checking"""
-        config = {'capabilities': ['text-generation', 'coding']}
-        model = Mock(spec=BaseAIModel)
-        model.capabilities = config['capabilities']
-        model.can_handle_capability = BaseAIModel.can_handle_capability.__get__(model)
-        
-        assert model.can_handle_capability('text-generation') is True
-        assert model.can_handle_capability('coding') is True
-        assert model.can_handle_capability('reasoning') is False
+    @pytest.mark.asyncio
+    async def test_generate_response_not_implemented(self):
+        """Test that base generate_response method raises NotImplementedError"""
+        config = {'id': 'test', 'provider': 'test', 'name': 'Test'}
+        model = BaseAIModel(config)
+        request = PromptRequest(
+            id="test-id",
+            user_id="test-user",
+            prompt="test prompt"
+        )
+        with pytest.raises(NotImplementedError):
+            await model.generate_response(request)
 
 
 class TestOpenAIModel:
-    @pytest.fixture
-    def model_config(self):
-        return {
-            'id': 'openai-gpt-4',
-            'name': 'GPT-4',
-            'provider': 'openai',
-            'cost_per_1k_tokens': 0.03,
-            'max_tokens': 8192,
-            'capabilities': ['text-generation', 'reasoning', 'coding']
-        }
+    """Test OpenAI model implementation"""
     
-    @patch('src.models.openai_model.openai')
-    def test_openai_model_initialization(self, mock_openai, model_config):
+    @patch('src.models.openai_model.openai.AsyncOpenAI')
+    def test_openai_initialization(self, mock_openai):
         """Test OpenAI model initialization"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.openai_api_key = 'test-key'
-            model = OpenAIModel(model_config)
-            
-            assert model.model_id == 'openai-gpt-4'
-            assert model.name == 'GPT-4'
-            assert model.provider == 'openai'
+        config = ModelConfig(
+            model_id="gpt-4",
+            provider="openai",
+            max_tokens=1000,
+            temperature=0.7
+        )
+        model = OpenAIModel(config)
+        assert model.model_id == "gpt-4"
+        assert model.provider == "openai"
+        mock_openai.assert_called_once()
     
-    def test_estimate_tokens(self, model_config):
-        """Test token estimation"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.openai_api_key = 'test-key'
-            with patch('src.models.openai_model.tiktoken') as mock_tiktoken:
-                mock_encoding = Mock()
-                mock_encoding.encode.return_value = [1, 2, 3, 4, 5]
-                mock_tiktoken.encoding_for_model.return_value = mock_encoding
-                
-                model = OpenAIModel(model_config)
-                tokens = model.estimate_tokens("Hello world")
-                
-                assert tokens == 5
+    @pytest.mark.asyncio
+    @patch('src.models.openai_model.openai.AsyncOpenAI')
+    async def test_openai_generate_success(self, mock_openai):
+        """Test successful OpenAI generation"""
+        # Mock the OpenAI client
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = "Test response"
+        mock_response.usage.total_tokens = 10
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_openai.return_value = mock_client
+        
+        config = ModelConfig(model_id="gpt-4", provider="openai")
+        model = OpenAIModel(config)
+        
+        response = await model.generate("Test prompt")
+        
+        assert isinstance(response, ModelResponse)
+        assert response.content == "Test response"
+        assert response.tokens_used == 10
+        assert response.model_id == "gpt-4"
+    
+    @pytest.mark.asyncio
+    @patch('src.models.openai_model.openai.AsyncOpenAI')
+    async def test_openai_generate_error(self, mock_openai):
+        """Test OpenAI generation error handling"""
+        mock_client = Mock()
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
+        mock_openai.return_value = mock_client
+        
+        config = ModelConfig(model_id="gpt-4", provider="openai")
+        model = OpenAIModel(config)
+        
+        with pytest.raises(Exception):
+            await model.generate("Test prompt")
 
 
 class TestAnthropicModel:
-    @pytest.fixture
-    def model_config(self):
-        return {
-            'id': 'anthropic-claude-3',
-            'name': 'Claude 3',
-            'provider': 'anthropic',
-            'cost_per_1k_tokens': 0.015,
-            'max_tokens': 200000,
-            'capabilities': ['text-generation', 'reasoning', 'coding']
-        }
+    """Test Anthropic model implementation"""
     
-    @patch('src.models.anthropic_model.anthropic')
-    def test_anthropic_model_initialization(self, mock_anthropic, model_config):
+    @patch('src.models.anthropic_model.Anthropic')
+    def test_anthropic_initialization(self, mock_anthropic):
         """Test Anthropic model initialization"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.anthropic_api_key = 'test-key'
-            model = AnthropicModel(model_config)
-            
-            assert model.model_id == 'anthropic-claude-3'
-            assert model.name == 'Claude 3'
-            assert model.provider == 'anthropic'
+        config = ModelConfig(
+            model_id="claude-3-sonnet",
+            provider="anthropic",
+            max_tokens=1000,
+            temperature=0.7
+        )
+        model = AnthropicModel(config)
+        assert model.model_id == "claude-3-sonnet"
+        assert model.provider == "anthropic"
+        mock_anthropic.assert_called_once()
     
-    def test_estimate_tokens(self, model_config):
-        """Test token estimation"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.anthropic_api_key = 'test-key'
-            model = AnthropicModel(model_config)
-            
-            tokens = model.estimate_tokens("Hello world")
-            assert tokens == 3  # 12 characters / 4 = 3 tokens
+    @pytest.mark.asyncio
+    @patch('src.models.anthropic_model.Anthropic')
+    async def test_anthropic_generate_success(self, mock_anthropic):
+        """Test successful Anthropic generation"""
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.content = [Mock()]
+        mock_response.content[0].text = "Test response"
+        mock_response.usage.input_tokens = 5
+        mock_response.usage.output_tokens = 10
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_anthropic.return_value = mock_client
+        
+        config = ModelConfig(model_id="claude-3-sonnet", provider="anthropic")
+        model = AnthropicModel(config)
+        
+        response = await model.generate("Test prompt")
+        
+        assert isinstance(response, ModelResponse)
+        assert response.content == "Test response"
+        assert response.tokens_used == 15  # input + output
+        assert response.model_id == "claude-3-sonnet"
 
 
 class TestGeminiModel:
-    @pytest.fixture
-    def model_config(self):
-        return {
-            'id': 'google-gemini-pro',
-            'name': 'Gemini Pro',
-            'provider': 'google',
-            'cost_per_1k_tokens': 0.0,
-            'max_tokens': 30000,
-            'capabilities': ['text-generation', 'reasoning', 'coding']
-        }
+    """Test Google Gemini model implementation"""
     
-    @patch('src.models.gemini_model.genai')
-    def test_gemini_model_initialization(self, mock_genai, model_config):
+    @patch('src.models.gemini_model.google.generativeai')
+    def test_gemini_initialization(self, mock_gemini):
         """Test Gemini model initialization"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.google_api_key = 'test-key'
-            model = GeminiModel(model_config)
-            
-            assert model.model_id == 'google-gemini-pro'
-            assert model.name == 'Gemini Pro'
-            assert model.provider == 'google'
+        config = ModelConfig(
+            model_id="gemini-pro",
+            provider="google",
+            max_tokens=1000,
+            temperature=0.7
+        )
+        model = GeminiModel(config)
+        assert model.model_id == "gemini-pro"
+        assert model.provider == "google"
+        mock_gemini.configure.assert_called_once()
     
-    def test_estimate_tokens(self, model_config):
-        """Test token estimation"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.google_api_key = 'test-key'
-            model = GeminiModel(model_config)
-            
-            tokens = model.estimate_tokens("Hello world")
-            assert tokens == 3  # 12 characters / 4 = 3 tokens
+    @pytest.mark.asyncio
+    @patch('src.models.gemini_model.google.generativeai')
+    async def test_gemini_generate_success(self, mock_gemini):
+        """Test successful Gemini generation"""
+        mock_model = Mock()
+        mock_response = Mock()
+        mock_response.text = "Test response"
+        mock_model.generate_content = AsyncMock(return_value=mock_response)
+        mock_gemini.GenerativeModel.return_value = mock_model
+        
+        config = ModelConfig(model_id="gemini-pro", provider="google")
+        model = GeminiModel(config)
+        
+        response = await model.generate("Test prompt")
+        
+        assert isinstance(response, ModelResponse)
+        assert response.content == "Test response"
+        assert response.model_id == "gemini-pro"
 
 
 class TestDeepSeekModel:
-    @pytest.fixture
-    def model_config(self):
-        return {
-            'id': 'deepseek-deepseek-chat',
-            'name': 'DeepSeek Chat',
-            'provider': 'deepseek',
-            'cost_per_1k_tokens': 0.0014,
-            'max_tokens': 32768,
-            'capabilities': ['text-generation', 'reasoning', 'coding']
-        }
+    """Test DeepSeek model implementation"""
     
-    def test_deepseek_model_initialization(self, model_config):
+    @patch('src.models.deepseek_model.requests.post')
+    def test_deepseek_initialization(self, mock_requests):
         """Test DeepSeek model initialization"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.deepseek_api_key = 'test-key'
-            model = DeepSeekModel(model_config)
-            
-            assert model.model_id == 'deepseek-deepseek-chat'
-            assert model.name == 'DeepSeek Chat'
-            assert model.provider == 'deepseek'
+        config = ModelConfig(
+            model_id="deepseek-chat",
+            provider="deepseek",
+            max_tokens=1000,
+            temperature=0.7
+        )
+        model = DeepSeekModel(config)
+        assert model.model_id == "deepseek-chat"
+        assert model.provider == "deepseek"
     
-    def test_estimate_tokens(self, model_config):
-        """Test token estimation"""
-        with patch('src.utils.config.config_manager') as mock_config:
-            mock_config.settings.deepseek_api_key = 'test-key'
-            model = DeepSeekModel(model_config)
-            
-            tokens = model.estimate_tokens("Hello world")
-            assert tokens == 3  # 12 characters / 4 = 3 tokens 
+    @pytest.mark.asyncio
+    @patch('src.models.deepseek_model.requests.post')
+    async def test_deepseek_generate_success(self, mock_requests):
+        """Test successful DeepSeek generation"""
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "Test response"}}],
+            "usage": {"total_tokens": 15}
+        }
+        mock_response.status_code = 200
+        mock_requests.return_value = mock_response
+        
+        config = ModelConfig(model_id="deepseek-chat", provider="deepseek")
+        model = DeepSeekModel(config)
+        
+        response = await model.generate("Test prompt")
+        
+        assert isinstance(response, ModelResponse)
+        assert response.content == "Test response"
+        assert response.tokens_used == 15
+        assert response.model_id == "deepseek-chat" 

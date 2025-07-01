@@ -16,7 +16,7 @@ models:
       capabilities: ["text-generation", "reasoning", "coding"]
   
   google:
-    gemini-pro:
+    gemini-1.5-pro:
       cost_per_1k_tokens: 0.0
       max_tokens: 30000
       capabilities: ["text-generation", "reasoning", "coding"]

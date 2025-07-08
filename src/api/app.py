@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, RedirectResponse
 from src.api.routes import router
+from src.api.auth_routes import router as auth_router
+from src.api.dashboard_routes import router as dashboard_router
 from src.utils.logger import setup_logging, get_logger
 from src.utils.database import db_manager
 import sentry_sdk
@@ -43,6 +45,8 @@ app.add_middleware(
 
 # Include routes
 app.include_router(router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1/auth")
+app.include_router(dashboard_router, prefix="")
 
 
 @app.on_event("startup")
@@ -79,14 +83,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {
-        "message": "Welcome to Hapivet Prompt Library",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "examples": "/examples",
-        "health": "/api/v1/health"
-    }
+    """Root endpoint - redirect to login"""
+    return RedirectResponse(url="/api/v1/auth/login")
 
 
 @app.get("/examples", response_class=HTMLResponse)

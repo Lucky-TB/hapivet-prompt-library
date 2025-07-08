@@ -227,10 +227,14 @@ class AlertModel(BaseModel):
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Extract user ID from API key"""
-    # In a real implementation, you would validate the API key and return the user ID
-    # For now, we'll use the API key as the user ID
-    return credentials.credentials
+    """Get current user from token"""
+    from src.services.auth_service import auth_service
+    
+    user = auth_service.verify_token(credentials.credentials)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    return str(user["id"])  # Return user ID as string for compatibility
 
 
 @router.post("/prompt", response_model=PromptResponseModel)
@@ -267,8 +271,16 @@ async def submit_prompt(
             timestamp=response.timestamp
         )
         
+    except ValueError as e:
+        # Handle model availability errors
+        if "No suitable model available" in str(e):
+            raise HTTPException(status_code=503, detail="No AI models are currently available. Please check your API key configuration.")
+        elif "All available models failed" in str(e):
+            raise HTTPException(status_code=503, detail="All AI models are currently unavailable. Please try again later or check your API keys.")
+        else:
+            raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An error occurred while processing your request: {str(e)}")
 
 
 @router.get("/models", response_model=List[AIModel])
